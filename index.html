@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Miner</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js"></script>
+<style>
+  body{margin:0;font-family:sans-serif;background:#0f1420;color:#fff;text-align:center;padding:16px}
+  #bal{font-size:40px;font-weight:bold;margin:12px 0 0}
+  #rate{opacity:.7;margin-bottom:16px}
+  #tap{width:180px;height:180px;border-radius:50%;border:0;font-size:60px;
+       background:radial-gradient(#ffd54a,#f29d00);box-shadow:0 0 30px #f29d0088}
+  #tap:active{transform:scale(.94)}
+  .up{display:flex;justify-content:space-between;align-items:center;background:#1b2233;
+      border-radius:12px;padding:12px;margin:8px 0}
+  .up button{background:#2e7df6;color:#fff;border:0;border-radius:8px;padding:8px 12px}
+  .up button:disabled{opacity:.4}
+  #wallet{margin-top:16px;font-size:12px;word-break:break-all;opacity:.8}
+</style>
+</head>
+<body>
+<div id="ton-connect"></div>
+<div id="wallet">کیف پول وصل نیست</div>
+<div id="bal">0</div>
+<div id="rate"></div>
+<button id="tap">⛏</button>
+<h3>ارتقاها</h3>
+<div id="ups"></div>
+<p style="font-size:12px;opacity:.6">نسخه تست — سکه‌ها مجازی‌اند</p>
+
+<script>
+const tg = window.Telegram.WebApp; tg.ready(); tg.expand();
+
+// ---- state ----
+const KEY = "miner_state_v1";
+let S = { coins:0, perTap:1, perSec:0, last:Date.now(), lv:{tap:0,auto:0,boost:0} };
+try { Object.assign(S, JSON.parse(localStorage.getItem(KEY)||"{}")); } catch(e){}
+
+// درآمد آفلاین (حداکثر ۳ ساعت)
+const off = Math.min((Date.now()-S.last)/1000, 3*3600);
+S.coins += off * S.perSec; S.last = Date.now();
+
+const UPS = [
+  {id:"tap",   name:"قدرت ضربه  (+1 هر تپ)",     base:50,  apply:()=>S.perTap+=1},
+  {id:"auto",  name:"ماینر خودکار (+1 در ثانیه)", base:100, apply:()=>S.perSec+=1},
+  {id:"boost", name:"کارت گرافیک (+5 در ثانیه)",  base:500, apply:()=>S.perSec+=5},
+];
+const cost = u => Math.floor(u.base * Math.pow(1.6, S.lv[u.id]));
+
+function render(){
+  document.getElementById("bal").textContent = Math.floor(S.coins).toLocaleString();
+  document.getElementById("rate").textContent =
+    `هر تپ: ${S.perTap} | در ثانیه: ${S.perSec}`;
+  const box = document.getElementById("ups"); box.innerHTML = "";
+  UPS.forEach(u=>{
+    const c = cost(u), d = document.createElement("div"); d.className="up";
+    d.innerHTML = `<span>${u.name}<br><small>سطح ${S.lv[u.id]}</small></span>
+                   <button ${S.coins<c?"disabled":""}>${c.toLocaleString()} 🪙</button>`;
+    d.querySelector("button").onclick = ()=>{
+      if(S.coins>=c){ S.coins-=c; S.lv[u.id]++; u.apply(); save(); render();
+        tg.HapticFeedback && tg.HapticFeedback.impactOccurred("medium"); }
+    };
+    box.appendChild(d);
+  });
+}
+function save(){ S.last=Date.now(); localStorage.setItem(KEY, JSON.stringify(S)); }
+
+document.getElementById("tap").onclick = ()=>{
+  S.coins += S.perTap; render();
+  tg.HapticFeedback && tg.HapticFeedback.impactOccurred("light");
+};
+setInterval(()=>{ S.coins += S.perSec; render(); save(); }, 1000);
+render();
+
+// ---- TON Connect ----
+const ton = new TON_CONNECT_UI.TonConnectUI({
+  manifestUrl: location.origin + location.pathname.replace(/[^/]*$/,"") + "tonconnect-manifest.json",
+  buttonRootId: "ton-connect"
+});
+ton.onStatusChange(w=>{
+  document.getElementById("wallet").textContent =
+    w ? "کیف پول: " + w.account.address : "کیف پول وصل نیست";
+});
+</script>
+</body>
+</html>
